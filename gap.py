@@ -1,18 +1,8 @@
 import networkx as nx
 import numpy as np
+import math
 from pulp import *
 from networkx.algorithms import bipartite
-
-#B = nx.Graph()
-#B.add_nodes_from([1,2,3,4], bipartite=0)
-#B.add_nodes_from(['a','b','c'], bipartite=1)
-#B.add_edges_from([(1,'a'), (1, 'b'), (2, 'b'), (2, 'c'), (3, 'c'), (4, 'a')])
-
-#print(nx.is_connected(B))
-
-#bottom, top = bipartite.sets(B)
-#print(bottom)
-#print(top)
 
 #parses the provided file, which is assumed to have the followed format:
 #first line is number of GAP instances, then for each instance: a line with the number of agents/jobs, a line for each agent giving the cost of running each job,
@@ -37,26 +27,85 @@ def read_file(fileName):
 		processes.append(processTimes)
 		limits.append(timeLimits)
 		opts.append(int(F.readline()))
+	F.close()
 	return costs, processes, limits, opts
 
 #constructs the linear program representing the GAP problem for our current instance
-#details about the constraints/object function can be found on pages 280-281 in Williamson/Shmoys
-def create_lp(instance, costs, processes, limits):
+#details about the constraints/objective function can be found on pages 280-281 in Williamson/Shmoys
+def create_lp(instance):
 	prob = LpProblem("Generalized assignment problem", LpMinimize)
-	agents = len(costs[0])
-	jobs = len(costs[0][0])
-	indices = [[(str(x), str(y)) for x in range(agents)] for y in range(jobs)]
+	agents = len(costs[instance])
+	jobs = len(costs[instance][0])
 	x = LpVariable.dicts("x", ((y) for x in indices for y in x), 0, cat="Continuous")
-	prob += lpSum(x[(str(i), str(j))] * costs[instance][i][j] for i in range(agents) for j in range(jobs))
+	prob += lpSum(x[(str(i), str(j))] * costs[instance][i][j] for j in range(jobs) for i in range(agents))
 	for j in range(jobs):
 		prob += lpSum(x[str(i), str(j)] for i in range(agents)) == 1
 	for i in range(agents):
 		prob += lpSum(x[str(i), str(j)] * processes[instance][i][j] for j in range(jobs)) <= limits[instance][i]
-	return prob
+	for i in range(agents):
+		for j in range(jobs):
+			if processes[instance][i][j] > limits[instance][i]:
+				prob += x[str(i), str(j)] == 0
+	return prob, x
+
+#calculates the number of "bins" each agent runs jobs in, based on the optimal LP solution
+def num_bins():
+	bins = []
+	for x in indices:
+		sum = 0
+		for y in x:
+			sum += dictionary[y].varValue
+		bins.append(math.ceil(sum))
+	return bins
+
+#creates (job time, job index) tuples for the given agent and sorts them in decreasing job time order
+def construct_process_ordering(instance, agent):
+	tuples = []
+	for j in range(len(processes[instance][agent])):
+		tuples.append((processes[instance][i][j], j))
+	tuples.sort(key = lambda x: x[0], reverse=True)
+	return tuples
+
+#adds edges to G, mapping jobs to the bins the agent run them in in the optimal LP solution (if a job is run in two bins, we draw two edges
+#from the job into the bins for the agent)
+def construct_edges(instance, agent):
+	ordering = construct_process_ordering(instance, agent)
+	filled = 0
+	binNum = 0
+	for x in ordering:
+		value = dictionary[(str(agent), str(x[1]))].varValue
+		if value > 0:
+			filled += value
+			G.add_edge(x[1], (agent, binNum), weight=costs[instance][agent][x[1]])
+			if filled > 1:
+				G.add_edge(x[1], (agent, binNum + 1), weight=costs[instance][agent][x[1]])
+				filled -= 1
+				binNum += 1
+	return G
+
+#constructs the bipartite graph (one set represents the jobs, the other represents the bins that our agents run jobs in)
+def construct_graph(instance):
+	agents = len(costs[instance])
+	jobs = len(costs[instance][0])
+	G.add_nodes_from([(j) for j in range(jobs)], bipartite=0)
+	bins = num_bins()
+	for i in range(agents):
+		G.add_nodes_from([(i, j) for j in range(bins[i])], bipartite=1)
+	for i in range(agents):
+		construct_edges(instance, i)
+	t, b = bipartite.sets(G)
+	print(t)
+	print(b)
+	return G
 
 costs, processes, limits, opts = read_file("gap1.txt")
-lp = create_lp(0, costs, processes, limits)
-print(lp)
-lp.solve()
-for i in lp.variables():
-	print(i.name, "=", i.varValue)
+for i in range(1):
+#for i in range(len(costs)):
+	indices = [[(str(y), str(x)) for x in range(len(costs[i][0]))] for y in range(len(costs[i]))]
+	lp, dictionary = create_lp(i)
+	lp.solve()
+	if LpStatus[lp.status] == "Infeasible":
+		print("Problem has no solution given constraints.")
+	else:
+		G = nx.Graph()
+		construct_graph(i)
