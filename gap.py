@@ -2,18 +2,17 @@ import networkx as nx
 import numpy as np
 import math
 from pulp import *
-from networkx.algorithms import bipartite
+from networkx.algorithms import bipartite, matching
 
 #parses the provided file, which is assumed to have the followed format:
 #first line is number of GAP instances, then for each instance: a line with the number of agents/jobs, a line for each agent giving the cost of running each job,
-#a line for each agent giving the time required to run each job, a line giving the time bounds for each agent, and finally the optimal solution cost
+#a line for each agent giving the time required to run each job, and a line giving the time bounds for each agent
 def read_file(fileName):
 	F = open("gap1.txt", "r")
 	numProblems = int(F.readline())
 	costs = []
 	processes = []
 	limits = []
-	opts = []
 	for i in range (0, numProblems):
 		agents, jobs = [int(x) for x in F.readline().split(" ", 2)]
 		jobCosts = []
@@ -26,9 +25,8 @@ def read_file(fileName):
 		costs.append(jobCosts)
 		processes.append(processTimes)
 		limits.append(timeLimits)
-		opts.append(int(F.readline()))
 	F.close()
-	return costs, processes, limits, opts
+	return costs, processes, limits
 
 #constructs the linear program representing the GAP problem for our current instance
 #details about the constraints/objective function can be found on pages 280-281 in Williamson/Shmoys
@@ -77,11 +75,11 @@ def construct_edges(instance, agent):
 		if value > 0:
 			filled += value
 			G.add_edge(x[1], (agent, binNum), weight=costs[instance][agent][x[1]])
-			if filled > 1:
-				G.add_edge(x[1], (agent, binNum + 1), weight=costs[instance][agent][x[1]])
+			if filled >= 1:
 				filled -= 1
 				binNum += 1
-	return G
+				if filled > 0:
+					G.add_edge(x[1], (agent, binNum), weight=costs[instance][agent][x[1]])
 
 #constructs the bipartite graph (one set represents the jobs, the other represents the bins that our agents run jobs in)
 def construct_graph(instance):
@@ -93,13 +91,31 @@ def construct_graph(instance):
 		G.add_nodes_from([(i, j) for j in range(bins[i])], bipartite=1)
 	for i in range(agents):
 		construct_edges(instance, i)
-	t, b = bipartite.sets(G)
-	print(t)
-	print(b)
-	return G
 
-costs, processes, limits, opts = read_file("gap1.txt")
-for i in range(1):
+#constructs our solution by finding a minimum cost matching on the bipartite graph
+#we update the cost of the edges to use the maximum matching algorithm to get a minimum matching instead
+def construct_matching(instance):
+	maxWeight = sorted(G.edges(data=True), key=lambda x: x[2]['weight'], reverse=True)[0][2]['weight']
+	for e in G.edges():
+		G[e[0]][e[1]]['weight'] = 2 * maxWeight - G[e[0]][e[1]]['weight']
+	match = matching.max_weight_matching(G)
+	assignments = []
+	for x in match:
+		if isinstance(x[0], tuple):
+			assignments.append((x[0][0], x[1]))
+		else:
+			assignments.append((x[1][0], x[0]))
+	return assignments
+
+#evaluates the algorithm's solution
+def evaluate_sol(instance, sol):
+	cost = 0
+	for j in sol:
+		cost += costs[instance][j[0]][j[1]]
+	print("Our solution has cost", cost)
+
+costs, processes, limits = read_file("gap1.txt")
+for i in range(len(costs)):
 #for i in range(len(costs)):
 	indices = [[(str(y), str(x)) for x in range(len(costs[i][0]))] for y in range(len(costs[i]))]
 	lp, dictionary = create_lp(i)
@@ -109,3 +125,5 @@ for i in range(1):
 	else:
 		G = nx.Graph()
 		construct_graph(i)
+		sol = construct_matching(G)
+		evaluate_sol(i, sol)
