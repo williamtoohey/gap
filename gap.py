@@ -1,22 +1,22 @@
 import networkx as nx
 import numpy as np
 import math
+import itertools
 from pulp import *
 from networkx.algorithms import bipartite, matching
+from collections import defaultdict
+from sympy.utilities.iterables import multiset_permutations
 
 #parses the provided file, which is assumed to have the followed format:
 #first line is number of GAP instances, then for each instance: a line with the number of agents/jobs, a line for each agent giving the cost of running each job,
 #a line for each agent giving the time required to run each job, and a line giving the time bounds for each agent
 def read_file(fileName):
-	F = open("gap1.txt", "r")
+	F = open(fileName, "r")
 	numProblems = int(F.readline())
-	costs = []
-	processes = []
-	limits = []
+	costs = []; processes = []; limits = []
 	for i in range (0, numProblems):
 		agents, jobs = [int(x) for x in F.readline().split(" ", 2)]
-		jobCosts = []
-		processTimes = []
+		jobCosts = []; processTimes = []
 		for j in range(0, agents):
 			jobCosts.append([int(x) for x in F.readline().split(" ", jobs)])
 		for j in range(0, agents):
@@ -68,8 +68,7 @@ def construct_process_ordering(instance, agent):
 #from the job into the bins for the agent)
 def construct_edges(instance, agent):
 	ordering = construct_process_ordering(instance, agent)
-	filled = 0
-	binNum = 0
+	filled = 0; binNum = 0
 	for x in ordering:
 		value = dictionary[(str(agent), str(x[1]))].varValue
 		if value > 0:
@@ -107,15 +106,32 @@ def construct_matching(instance):
 			assignments.append((x[1][0], x[0]))
 	return assignments
 
-#evaluates the algorithm's solution
+#gets the total cost of our algorithm's output and determines the largest ratio of agent run time to agent time constraint in our solution
 def evaluate_sol(instance, sol):
+	print("Instance:", instance)
+	print("The algorithm's solution is:", sol)
 	cost = 0
 	for j in sol:
 		cost += costs[instance][j[0]][j[1]]
 	print("Our solution has cost", cost)
+	dict = defaultdict(int)
+	for agent, job in sol:
+		dict[agent] += processes[instance][agent][job]
+	worstRatio = 1.0; worstOffender = -1; timeWorstOffender = 0
+	for agent, job in sol:
+		ratio = dict[agent] / limits[instance][agent]
+		if limits[instance][agent] < dict[agent] and ratio > worstRatio:
+			worstRatio = ratio
+			worstOffender = agent
+			timeWorstOffender = dict[agent]
+	if worstOffender == -1:
+		print("All agents ran within their time bounds!\n")
+	else:
+		print("Worst time ratio was", worstRatio, "with agent", worstOffender, "running for", timeWorstOffender, "units with time limit", limits[instance][worstOffender], "\n")
 
-costs, processes, limits = read_file("gap1.txt")
-for i in range(len(costs)):
+#reads the provided file (in the same directory), and for each GAP instance: constructs a linear program, solves it, and if there is a feasible solution constructs a bipartite graph and minimal matching and analyzes the solution
+costs, processes, limits = read_file("%s" % (sys.argv[1]))
+for i in range(5):
 #for i in range(len(costs)):
 	indices = [[(str(y), str(x)) for x in range(len(costs[i][0]))] for y in range(len(costs[i]))]
 	lp, dictionary = create_lp(i)
