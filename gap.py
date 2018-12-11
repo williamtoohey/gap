@@ -5,11 +5,11 @@ import itertools
 from pulp import *
 from networkx.algorithms import bipartite, matching
 from collections import defaultdict
-from sympy.utilities.iterables import multiset_permutations
 
 #parses the provided file, which is assumed to have the followed format:
 #first line is number of GAP instances, then for each instance: a line with the number of agents/jobs, a line for each agent giving the cost of running each job,
 #a line for each agent giving the time required to run each job, and a line giving the time bounds for each agent
+#costs and processes are 3d arrays (1d is instance, 2d is agent, 3d is job) and time limits are 2d arrays (1d is instance, 2d is agent)
 def read_file(fileName):
 	F = open(fileName, "r")
 	numProblems = int(F.readline())
@@ -28,9 +28,9 @@ def read_file(fileName):
 	F.close()
 	return costs, processes, limits
 
-#constructs the linear program representing the GAP problem for our current instance
+#constructs the linear program representing the GAP problem for our current instance by using pulp
 #details about the constraints/objective function can be found on pages 280-281 in Williamson/Shmoys
-def create_lp(instance):
+def create_lp():
 	prob = LpProblem("Generalized assignment problem", LpMinimize)
 	agents = len(costs[instance])
 	jobs = len(costs[instance][0])
@@ -57,17 +57,17 @@ def num_bins():
 	return bins
 
 #creates (job time, job index) tuples for the given agent and sorts them in decreasing job time order
-def construct_process_ordering(instance, agent):
+def construct_process_ordering(agent):
 	tuples = []
 	for j in range(len(processes[instance][agent])):
-		tuples.append((processes[instance][i][j], j))
+		tuples.append((processes[instance][agent][j], j))
 	tuples.sort(key = lambda x: x[0], reverse=True)
 	return tuples
 
 #adds edges to G, mapping jobs to the bins the agent run them in in the optimal LP solution (if a job is run in two bins, we draw two edges
 #from the job into the bins for the agent)
-def construct_edges(instance, agent):
-	ordering = construct_process_ordering(instance, agent)
+def construct_edges(agent):
+	ordering = construct_process_ordering(agent)
 	filled = 0; binNum = 0
 	for x in ordering:
 		value = dictionary[(str(agent), str(x[1]))].varValue
@@ -81,7 +81,7 @@ def construct_edges(instance, agent):
 					G.add_edge(x[1], (agent, binNum), weight=costs[instance][agent][x[1]])
 
 #constructs the bipartite graph (one set represents the jobs, the other represents the bins that our agents run jobs in)
-def construct_graph(instance):
+def construct_graph():
 	agents = len(costs[instance])
 	jobs = len(costs[instance][0])
 	G.add_nodes_from([(j) for j in range(jobs)], bipartite=0)
@@ -89,11 +89,11 @@ def construct_graph(instance):
 	for i in range(agents):
 		G.add_nodes_from([(i, j) for j in range(bins[i])], bipartite=1)
 	for i in range(agents):
-		construct_edges(instance, i)
+		construct_edges(i)
 
 #constructs our solution by finding a minimum cost matching on the bipartite graph
 #we update the cost of the edges to use the maximum matching algorithm to get a minimum matching instead
-def construct_matching(instance):
+def construct_matching():
 	maxWeight = sorted(G.edges(data=True), key=lambda x: x[2]['weight'], reverse=True)[0][2]['weight']
 	for e in G.edges():
 		G[e[0]][e[1]]['weight'] = 2 * maxWeight - G[e[0]][e[1]]['weight']
@@ -107,7 +107,7 @@ def construct_matching(instance):
 	return assignments
 
 #gets the total cost of our algorithm's output and determines the largest ratio of agent run time to agent time constraint in our solution
-def evaluate_sol(instance, sol):
+def evaluate_sol():
 	print("Instance:", instance)
 	print("The algorithm's solution is:", sol)
 	cost = 0
@@ -129,18 +129,19 @@ def evaluate_sol(instance, sol):
 	else:
 		print("Worst time ratio was", worstRatio, "with agent", worstOffender, "running for", timeWorstOffender, "units with time limit", limits[instance][worstOffender], "\n")
 
-#reads the provided file (in the same directory), and for each GAP instance: constructs a linear program, solves it, and if there is a feasible solution constructs a bipartite graph and minimal matching and analyzes the solution
+#reads the provided file (in the same directory), and for each GAP instance: constructs a linear program, solves it, and if there is a feasible
+#solution constructs a bipartite graph and minimal matching and analyzes the solution
 costs, processes, limits = read_file("%s" % (sys.argv[1]))
 print("\nNote: all solutions are presented as sets of (agent, job) tuples, or which agent runs which jobs.\n")
-for i in range(5):
+for instance in range(len(costs)):
 #for i in range(len(costs)):
-	indices = [[(str(y), str(x)) for x in range(len(costs[i][0]))] for y in range(len(costs[i]))]
-	lp, dictionary = create_lp(i)
+	indices = [[(str(y), str(x)) for x in range(len(costs[instance][0]))] for y in range(len(costs[instance]))]
+	lp, dictionary = create_lp()
 	lp.solve()
 	if LpStatus[lp.status] == "Infeasible":
 		print("Problem has no solution given constraints.")
 	else:
 		G = nx.Graph()
-		construct_graph(i)
-		sol = construct_matching(G)
-		evaluate_sol(i, sol)
+		construct_graph()
+		sol = construct_matching()
+		evaluate_sol()
