@@ -1,4 +1,4 @@
-# gap
+# Generalized Assignment Problem
 
 This was written and tested using Python 3.7.
 
