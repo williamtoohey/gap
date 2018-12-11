@@ -2,6 +2,7 @@ import networkx as nx
 import numpy as np
 import math
 import itertools
+import copy
 from pulp import *
 from networkx.algorithms import bipartite, matching
 from collections import defaultdict
@@ -131,6 +132,7 @@ def evaluate_sol(instance, sol):
 
 #reads the provided file (in the same directory), and for each GAP instance: constructs a linear program, solves it, and if there is a feasible solution constructs a bipartite graph and minimal matching and analyzes the solution
 costs, processes, limits = read_file("%s" % (sys.argv[1]))
+print("\nNote: all solutions are presented as sets of (agent, job) tuples, or which agent runs which jobs.\n")
 for i in range(5):
 #for i in range(len(costs)):
 	indices = [[(str(y), str(x)) for x in range(len(costs[i][0]))] for y in range(len(costs[i]))]
