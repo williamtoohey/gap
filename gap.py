@@ -2,7 +2,6 @@ import networkx as nx
 import numpy as np
 import math
 import itertools
-import copy
 from pulp import *
 from networkx.algorithms import bipartite, matching
 from collections import defaultdict
