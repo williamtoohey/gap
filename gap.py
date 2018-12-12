@@ -64,7 +64,7 @@ def construct_process_ordering(agent):
 	tuples.sort(key = lambda x: x[0], reverse=True)
 	return tuples
 
-#adds edges to G, mapping jobs to the bins the agent run them in in the optimal LP solution (if a job is run in two bins, we draw two edges
+#adds edges to G, mapping jobs to the bins the agents run them in in the optimal LP solution (if a job is run in two bins, we draw two edges
 #from the job into the bins for the agent)
 def construct_edges(agent):
 	ordering = construct_process_ordering(agent)
@@ -134,7 +134,6 @@ def evaluate_sol():
 costs, processes, limits = read_file("%s" % (sys.argv[1]))
 print("\nNote: all solutions are presented as sets of (agent, job) tuples, or which agent runs which jobs.\n")
 for instance in range(len(costs)):
-#for i in range(len(costs)):
 	indices = [[(str(y), str(x)) for x in range(len(costs[instance][0]))] for y in range(len(costs[instance]))]
 	lp, dictionary = create_lp()
 	lp.solve()
